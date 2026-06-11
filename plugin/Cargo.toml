@@ -1,0 +1,12 @@
+[package]
+name = "danmuji-rust-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "danmuji_rust_plugin"
+crate-type = ["cdylib"]
+
+[dependencies]
+danmuji-sdk = { path = "../crates/danmuji-sdk" }
+

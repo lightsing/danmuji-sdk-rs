@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/danmuji-sdk",
+    "plugin",
+]
+resolver = "2"
+
