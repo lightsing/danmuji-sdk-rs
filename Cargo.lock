@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "danmuji-rust-example-plugin"
+version = "0.1.0"
+dependencies = [
+ "danmuji-sdk",
+]
+
+[[package]]
 name = "danmuji-rust-plugin"
 version = "0.1.0"
 dependencies = [

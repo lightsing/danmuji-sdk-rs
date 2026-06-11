@@ -6,7 +6,8 @@ The Danmuji host loads .NET Framework plugins that inherit `DMPlugin`, so Rust
 cannot replace the .NET class directly. This repository provides:
 
 - `crates/danmuji-sdk`: Rust types, host API, lifecycle/event trait, and export macro.
-- `plugin`: a Rust `cdylib` example that implements the plugin logic.
+- `plugin`: the default Rust `cdylib` plugin target.
+- `example`: a fuller example plugin that handles comments, gifts, SC, and admin summaries.
 - `bridge/DanmujiRustBridge`: a small .NET Framework bridge that inherits `DMPlugin`
   and forwards events to the Rust DLL.
 
@@ -17,6 +18,14 @@ cannot replace the .NET class directly. This repository provides:
 ```
 
 The packaged plugin files are written to `dist/`.
+
+To package the example plugin:
+
+```powershell
+.\example\build.ps1 -Configuration Release
+```
+
+The example package is written to `example\dist\`.
 
 ## Edit the Rust plugin
 
@@ -45,4 +54,3 @@ Copy the files from `dist/` into Danmuji's plugin folder:
 
 If Danmuji is running as 32-bit, build the Rust DLL with an x86 Windows target
 and make sure the .NET bridge is built for x86 as well.
-
