@@ -66,8 +66,9 @@ For the sample plugin, use `example\dist\`:
 
 - `DanmujiRustBridge.dll`
 - `danmuji_rust_plugin.dll`
-- `BilibiliDM_PluginFramework.dll`
-- `Newtonsoft.Json.dll`
+
+`BilibiliDM_PluginFramework.dll` and `Newtonsoft.Json.dll` are not packaged
+because Danmuji already provides them in production.
 
 If Danmuji is running as 32-bit, build the Rust DLL with an x86 Windows target
 and make sure the .NET bridge is built for x86 as well.

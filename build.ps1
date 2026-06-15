@@ -47,15 +47,12 @@ try {
 
     $NativeDll = Join-Path $Root "target\$RustProfileDir\$RustLibraryName.dll"
     $BridgeDll = Join-Path $BridgeOut "DanmujiRustBridge.dll"
-    $NewtonsoftDll = Join-Path $BridgeOut "Newtonsoft.Json.dll"
 
-    if (!(Test-Path $BridgeDll) -or !(Test-Path $NewtonsoftDll)) {
+    if (!(Test-Path $BridgeDll)) {
         throw "Missing bridge runtime files in $BridgeOut. Run .\build.ps1 -RebuildBridge once or restore bridge\prebuilt."
     }
 
     Copy-Item -Force $BridgeDll $Dist
-    Copy-Item -Force $NewtonsoftDll $Dist
-    Copy-Item -Force (Join-Path $Root "vendor\BilibiliDM_PluginFramework.dll") $Dist
     Copy-Item -Force $NativeDll (Join-Path $Dist "danmuji_rust_plugin.dll")
 
     Write-Host "Packaged plugin files in $Dist"
