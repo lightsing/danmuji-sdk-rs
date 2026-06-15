@@ -1,16 +1,8 @@
-# Example Plugin
+# 示例插件
 
-This is a complete Rust plugin example for `danmuji-sdk-rs`.
+`example` 是 `danmuji-sdk-rs` 的仓库内示例插件，演示插件元信息、生命周期回调、`log` / `add_dm` 宿主调用，以及弹幕、礼物、SC、互动、开播和下播事件处理。
 
-It demonstrates:
-
-- plugin metadata
-- lifecycle callbacks
-- host calls through `log` and `add_dm`
-- comment, gift, Super Chat, interact, live start, and live end events
-- simple in-memory statistics shown from `Admin`
-
-Build and package it from the repository root:
+在仓库根目录构建：
 
 ```powershell
 cargo run -p cargo-danmuji -- danmuji build `
@@ -21,8 +13,6 @@ cargo run -p cargo-danmuji -- danmuji build `
     --output example\dist\RustSampleDanmujiPlugin.dll
 ```
 
-The packaged single-file plugin is written to `example\dist\RustSampleDanmujiPlugin.dll`.
+输出文件是 `example\dist\RustSampleDanmujiPlugin.dll`。它已经是单文件 B站弹幕姬插件，不需要额外携带 `BilibiliDM_PluginFramework.dll` 或 `Newtonsoft.Json.dll`。
 
-This command only builds the Rust example and uses the bridge template prepared
-by `cargo-danmuji`'s build script. Run `cargo clean -p cargo-danmuji` only when
-you need to force a bridge template rebuild.
+这个命令只构建 Rust 示例插件，并复用 `cargo-danmuji` 的 .NET 桥接模板；通常不需要手动编译桥接层。

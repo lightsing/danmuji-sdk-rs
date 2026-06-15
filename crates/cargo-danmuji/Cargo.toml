@@ -3,6 +3,12 @@ name = "cargo-danmuji"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
+include = [
+    "Cargo.toml",
+    "build.rs",
+    "src/**",
+    "assets/DanmujiRustBridge.dll",
+]
 
 [[bin]]
 name = "cargo-danmuji"

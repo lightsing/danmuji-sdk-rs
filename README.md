@@ -1,19 +1,19 @@
 # danmuji-sdk-rs
 
-Rust wrapper for the Bilibili Danmuji .NET plugin SDK.
+面向 [B站弹幕姬](https://github.com/copyliu/bililive_dm)（`bililive_dm`）的 Rust 插件 SDK。
 
-The Danmuji host loads .NET Framework plugins that inherit `DMPlugin`, so Rust
-cannot replace the .NET class directly. This repository provides:
+上游插件系统通过 .NET Framework 加载继承 `DMPlugin` 的插件类；本项目保留一个薄的 .NET 桥接层，把弹幕姬事件转发给 Rust `cdylib`，最后打包成一个可直接放进插件目录的 `.dll`。
 
-- `crates/cargo-danmuji`: Cargo subcommand that builds and packages plugins.
-- `crates/danmuji-sdk`: Rust types, host API, lifecycle/event trait, and export macro.
-- `example`: a complete example plugin that handles comments, gifts, SC, and admin summaries.
-- `bridge/DanmujiRustBridge`: a small .NET Framework bridge that inherits `DMPlugin`
-  and forwards events to the Rust DLL.
+## 目录
 
-## Build
+- `crates/danmuji-sdk`：Rust 侧 SDK、事件模型、宿主 API 和 `export_plugin!`。
+- `crates/cargo-danmuji`：Cargo 子命令，负责构建 Rust DLL 并打包单文件插件。
+- `bridge/DanmujiRustBridge`：继承 `BilibiliDM_PluginFramework.DMPlugin` 的 .NET 桥接模板。
+- `example`：仓库内示例插件。
 
-Package the example plugin:
+## 构建示例
+
+在仓库根目录执行：
 
 ```powershell
 cargo run -p cargo-danmuji -- danmuji build `
@@ -24,24 +24,13 @@ cargo run -p cargo-danmuji -- danmuji build `
     --output example\dist\RustSampleDanmujiPlugin.dll
 ```
 
-The example package is written to `example\dist\RustSampleDanmujiPlugin.dll`.
+输出文件是 `example\dist\RustSampleDanmujiPlugin.dll`，复制到 B站弹幕姬插件目录即可。
 
-Normal packaging builds the Rust plugin, uses the bridge template prepared by
-`cargo-danmuji`'s build script, appends the Rust native DLL as a PE overlay, and
-writes one plugin DLL.
+`BilibiliDM_PluginFramework.dll` 和 `Newtonsoft.Json.dll` 不会被打包；生产环境中的 B站弹幕姬已经提供它们。
 
-The Danmuji host still requires a .NET Framework plugin DLL at runtime because
-it discovers plugins by loading assemblies that inherit `DMPlugin`. Day-to-day
-Rust plugin builds do not run MSBuild unless `cargo-danmuji` itself needs to be
-rebuilt. After changing C# bridge code, rerun the same command; Cargo will rerun
-`cargo-danmuji`'s build script when bridge sources changed. To force that path:
+## 独立插件开发
 
-```powershell
-cargo clean -p cargo-danmuji
-```
-
-External plugin authors should install the cargo subcommand and build from their
-own plugin crate:
+开发者不需要 clone 本仓库。安装 Cargo 子命令后，在自己的插件项目里构建：
 
 ```powershell
 cargo install cargo-danmuji
@@ -50,33 +39,20 @@ cd my-plugin
 cargo danmuji build --release --output dist\MyPlugin.dll
 ```
 
-## Edit the Rust plugin
-
-Change `example/src/lib.rs`. The key entry points are methods on `DanmujiPlugin`:
-
-- `metadata`
-- `start`, `stop`, `admin`, `inited`, `deinit`
-- `connected`, `disconnected`
-- `room_count`
-- `danmaku`
-
-The Rust plugin must export the bridge ABI:
+Rust 插件实现 `DanmujiPlugin`，并导出桥接入口：
 
 ```rust
-danmuji_sdk::export_plugin!(SamplePlugin::default());
+danmuji_sdk::export_plugin!(MyPlugin::default());
 ```
 
-## Deploy
+## 构建说明
 
-Copy the generated plugin DLL into Danmuji's plugin folder. For the sample
-plugin, use:
+日常执行 `cargo danmuji build` 只会构建 Rust 插件，并把生成的 native DLL 追加到 .NET 桥接模板末尾，输出单个插件 `.dll`。
 
-```text
-example\dist\RustSampleDanmujiPlugin.dll
-```
+.NET 桥接模板由 `cargo-danmuji` 的 `build.rs` 管理；只有安装或重新构建 `cargo-danmuji`、或者桥接源码发生变化时，才需要重新编译 .NET 桥接层。
 
-`BilibiliDM_PluginFramework.dll` and `Newtonsoft.Json.dll` are not packaged
-because Danmuji already provides them in production.
+## 命名约定
 
-If Danmuji is running as 32-bit, build the Rust DLL with an x86 Windows target
-and make sure the .NET bridge is built for x86 as well.
+- 上游项目：`copyliu/bililive_dm`，文档中称为“B站弹幕姬”。
+- 上游插件 SDK：`BilibiliDM_PluginFramework.dll` / `DMPlugin`。
+- 本项目：`danmuji-sdk-rs`，Rust 包和命令沿用 `danmuji` 作为 crate/CLI 名称。

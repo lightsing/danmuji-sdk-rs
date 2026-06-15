@@ -26,6 +26,14 @@ fn main() {
         .join("bridge")
         .join("DanmujiRustBridge")
         .join("DanmujiRustBridge.csproj");
+
+    if !bridge_project.exists() {
+        let packaged_template = manifest_dir.join("assets").join("DanmujiRustBridge.dll");
+        println!("cargo:rerun-if-changed={}", packaged_template.display());
+        copy_template(&packaged_template, &output);
+        return;
+    }
+
     let bridge_dir = bridge_project
         .parent()
         .expect("bridge project has a parent");
@@ -69,6 +77,7 @@ fn main() {
         .join("net461")
         .join("DanmujiRustBridge.dll");
     copy_template(&built_template, &output);
+    sync_template_asset(&manifest_dir, &built_template);
 }
 
 fn copy_template(source: &Path, output: &Path) {
@@ -78,5 +87,24 @@ fn copy_template(source: &Path, output: &Path) {
 
     fs::create_dir_all(output.parent().expect("output has a parent"))
         .expect("failed to create OUT_DIR");
-    fs::copy(source, output).expect("failed to copy bridge template to OUT_DIR");
+    copy_if_changed(source, output);
+}
+
+fn sync_template_asset(manifest_dir: &Path, source: &Path) {
+    let output = manifest_dir.join("assets").join("DanmujiRustBridge.dll");
+    fs::create_dir_all(output.parent().expect("asset output has a parent"))
+        .expect("failed to create cargo-danmuji assets directory");
+    copy_if_changed(source, &output);
+}
+
+fn copy_if_changed(source: &Path, output: &Path) {
+    let bytes = fs::read(source).expect("failed to read bridge template");
+    if fs::read(output)
+        .map(|existing| existing == bytes)
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    fs::write(output, bytes).expect("failed to write bridge template");
 }

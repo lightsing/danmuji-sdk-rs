@@ -17,11 +17,11 @@ struct SamplePlugin {
 impl DanmujiPlugin for SamplePlugin {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
-            name: "Rust Sample Danmuji Plugin",
+            name: "Rust 弹幕姬示例插件",
             author: "danmuji-sdk-rs",
             contact: "",
             version: "v0.1.0",
-            description: "Sample Rust plugin for Bilibili Danmuji",
+            description: "danmuji-sdk-rs 示例插件",
         }
     }
 

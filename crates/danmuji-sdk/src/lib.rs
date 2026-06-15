@@ -1,4 +1,4 @@
-//! Rust side SDK for writing Bilibili Danmuji plugins through the .NET bridge.
+//! Rust side SDK for writing B站弹幕姬 (`bililive_dm`) plugins through the .NET bridge.
 
 pub mod ffi;
 pub mod host;

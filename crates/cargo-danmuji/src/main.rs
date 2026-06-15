@@ -43,7 +43,7 @@ enum CargoCli {
 }
 
 #[derive(Args, Debug)]
-#[command(about = "Build and package Rust plugins for Bilibili Danmuji")]
+#[command(about = "Build and package Rust plugins for B站弹幕姬")]
 struct DanmujiArgs {
     #[command(subcommand)]
     command: Commands,
@@ -51,11 +51,11 @@ struct DanmujiArgs {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    #[command(about = "Build a Rust cdylib and package a single Danmuji plugin DLL")]
+    #[command(about = "Build a Rust cdylib and package a single B站弹幕姬 plugin DLL")]
     Build(BuildOptions),
-    #[command(about = "Package an existing native DLL into a single Danmuji plugin DLL")]
+    #[command(about = "Package an existing native DLL into a single B站弹幕姬 plugin DLL")]
     Package(PackageOptions),
-    #[command(about = "Create a new Rust Danmuji plugin project")]
+    #[command(about = "Create a new Rust B站弹幕姬 plugin project")]
     New(NewOptions),
 }
 
@@ -193,7 +193,7 @@ fn build(options: BuildOptions) -> Result<()> {
     let template = read_template(options.template.as_deref())?;
 
     write_single_file_plugin(&template, &native_dll, &output)?;
-    println!("Packaged Danmuji plugin in {}", output.display());
+    println!("Packaged B站弹幕姬 plugin in {}", output.display());
 
     Ok(())
 }
@@ -213,7 +213,7 @@ struct PackageOptions {
 fn package(options: PackageOptions) -> Result<()> {
     let template = read_template(options.template.as_deref())?;
     write_single_file_plugin(&template, &options.native, &options.output)?;
-    println!("Packaged Danmuji plugin in {}", options.output.display());
+    println!("Packaged B站弹幕姬 plugin in {}", options.output.display());
     Ok(())
 }
 
@@ -267,7 +267,7 @@ name: \"{crate_name}\",\n            \
 author: \"\",\n            \
 contact: \"\",\n            \
 version: \"v0.1.0\",\n            \
-description: \"Rust Danmuji plugin\",\n        \
+description: \"Rust plugin for B站弹幕姬\",\n        \
 }}\n    \
 }}\n\n    \
 fn start(&mut self, host: Host, _ctx: PluginContext) {{\n        \
@@ -286,7 +286,7 @@ danmuji_sdk::export_plugin!({struct_name}::default());\n"
     )
     .wrap_err_with(|| format!("failed to write {}", lib_rs.display()))?;
 
-    println!("Created Danmuji plugin project in {}", root.display());
+    println!("Created B站弹幕姬 plugin project in {}", root.display());
     Ok(())
 }
 
