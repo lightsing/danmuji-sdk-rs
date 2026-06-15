@@ -11,20 +11,31 @@
 - `crates/cargo-danmuji/bridge`：继承 `BilibiliDM_PluginFramework.DMPlugin` 的 C# 桥接源码模板。
 - `example`：仓库内示例插件。
 
-## 构建示例
+## 安装
 
-在仓库根目录执行：
+从 crates.io 安装 Cargo 子命令：
 
 ```powershell
-cargo run -p cargo-danmuji -- danmuji build `
-    --manifest-path Cargo.toml `
-    --package danmuji-rust-example-plugin `
-    --lib-name danmuji_rust_example_plugin `
-    --release `
-    --output example\dist\RustSampleDanmujiPlugin.dll
+cargo install cargo-danmuji
 ```
 
-输出文件是 `example\dist\RustSampleDanmujiPlugin.dll`，复制到 B站弹幕姬插件目录即可。
+Rust 插件项目依赖：
+
+```toml
+[dependencies]
+danmuji-sdk = "0.1"
+```
+
+## 构建示例
+
+构建仓库内示例插件：
+
+```powershell
+cd example
+cargo danmuji build --release --output dist\RustSampleDanmujiPlugin.dll
+```
+
+输出文件是 `dist\RustSampleDanmujiPlugin.dll`，复制到 B站弹幕姬插件目录即可。
 
 `BilibiliDM_PluginFramework.dll` 和 `Newtonsoft.Json.dll` 不会被打包；生产环境中的 B站弹幕姬已经提供它们。
 
@@ -42,10 +53,9 @@ cargo danmuji upgrade
 
 ## 独立插件开发
 
-开发者不需要 clone 本仓库。安装 Cargo 子命令后，在自己的插件项目里构建：
+开发者不需要 clone 本仓库。在自己的插件项目里构建：
 
 ```powershell
-cargo install cargo-danmuji
 cargo danmuji new my-plugin
 cd my-plugin
 cargo danmuji build --release --output dist\MyPlugin.dll
@@ -73,9 +83,3 @@ danmuji_sdk::export_plugin!(MyPlugin::default());
 4. 按 SDK 版本、上游 commit 和桥接源码 hash 复用缓存。
 
 需要重新拉取分支或重建缓存时使用 `--refresh-sdk`。需要把 `.danmuji-version` 更新到最新 tag 时使用 `cargo danmuji upgrade`。缓存根目录默认在系统临时目录下，也可以用 `DANMUJI_CACHE_DIR` 指定。
-
-## 命名约定
-
-- 上游项目：`copyliu/bililive_dm`，文档中称为“B站弹幕姬”。
-- 上游插件 SDK：`BilibiliDM_PluginFramework.dll` / `DMPlugin`。
-- 本项目：`danmuji-sdk-rs`，Rust 包和命令沿用 `danmuji` 作为 crate/CLI 名称。

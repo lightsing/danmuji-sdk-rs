@@ -1,9 +1,19 @@
 [package]
 name = "cargo-danmuji"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Cargo subcommand for building single-file Bilibili Danmuji Rust plugins"
+documentation = "https://docs.rs/cargo-danmuji"
+readme = "README.md"
+keywords = ["bilibili", "danmuji", "cargo", "plugin"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
 include = [
     "Cargo.toml",
+    "README.md",
     "bridge/**",
     "src/**",
 ]

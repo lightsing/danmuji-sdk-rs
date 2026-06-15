@@ -1,10 +1,18 @@
 [package]
 name = "danmuji-sdk"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Rust SDK abstractions for Bilibili Danmuji (bililive_dm) plugins"
+documentation = "https://docs.rs/danmuji-sdk"
+readme = "README.md"
+keywords = ["bilibili", "danmuji", "plugin", "ffi"]
+categories = ["api-bindings", "development-tools::ffi"]
 
 [lib]
 name = "danmuji_sdk"
 
 [dependencies]
-
