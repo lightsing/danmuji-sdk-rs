@@ -25,26 +25,32 @@ impl FfiStr {
         }
     }
 
-    pub fn from_str(value: &str) -> Self {
+    pub fn borrowed(value: &str) -> Self {
         Self {
             ptr: value.as_ptr(),
             len: value.len(),
         }
     }
 
+    /// Converts a non-null FFI string into an owned Rust string.
+    ///
+    /// # Safety
+    ///
+    /// `self.ptr` must either be null or point to `self.len` readable bytes for the
+    /// duration of this call.
     pub unsafe fn to_string_lossy(self) -> Option<String> {
         if self.ptr.is_null() {
             return None;
         }
 
-        let bytes = slice::from_raw_parts(self.ptr, self.len);
+        let bytes = unsafe { slice::from_raw_parts(self.ptr, self.len) };
         Some(String::from_utf8_lossy(bytes).into_owned())
     }
 }
 
 impl From<&'static str> for FfiStr {
     fn from(value: &'static str) -> Self {
-        Self::from_str(value)
+        Self::borrowed(value)
     }
 }
 
@@ -105,13 +111,19 @@ pub struct FfiGiftRank {
 }
 
 impl FfiGiftRank {
+    /// Converts an FFI gift rank into the safe Rust model.
+    ///
+    /// # Safety
+    ///
+    /// All `FfiStr` fields must either be null or point to readable UTF-8 byte
+    /// sequences for the duration of this call.
     pub unsafe fn to_model(self) -> GiftRank {
         GiftRank {
-            user_name: self.user_name.to_string_lossy(),
-            coin: self.coin.to_string_lossy(),
+            user_name: unsafe { self.user_name.to_string_lossy() },
+            coin: unsafe { self.coin.to_string_lossy() },
             uid: self.uid,
             uid_long: self.uid_long,
-            uid_str: self.uid_str.to_string_lossy(),
+            uid_str: unsafe { self.uid_str.to_string_lossy() },
         }
     }
 }
@@ -147,41 +159,49 @@ pub struct FfiDanmaku {
 }
 
 impl FfiDanmaku {
+    /// Converts an FFI danmaku payload into the safe Rust model.
+    ///
+    /// # Safety
+    ///
+    /// All `FfiStr` fields must either be null or point to readable UTF-8 byte
+    /// sequences. When `gift_ranking_ptr` is non-null, it must point to
+    /// `gift_ranking_len` readable `FfiGiftRank` values for the duration of this
+    /// call.
     pub unsafe fn to_model(self) -> Danmaku {
         let gift_ranking = if self.gift_ranking_ptr.is_null() || self.gift_ranking_len == 0 {
             Vec::new()
         } else {
-            slice::from_raw_parts(self.gift_ranking_ptr, self.gift_ranking_len)
+            unsafe { slice::from_raw_parts(self.gift_ranking_ptr, self.gift_ranking_len) }
                 .iter()
-                .map(|rank| rank.to_model())
+                .map(|rank| unsafe { (*rank).to_model() })
                 .collect()
         };
 
         Danmaku {
             msg_type: MsgType::from_raw(self.msg_type),
             interact_type: InteractType::from_raw(self.interact_type),
-            comment_text: self.comment_text.to_string_lossy(),
-            comment_user: self.comment_user.to_string_lossy(),
-            user_name: self.user_name.to_string_lossy(),
+            comment_text: unsafe { self.comment_text.to_string_lossy() },
+            comment_user: unsafe { self.comment_user.to_string_lossy() },
+            user_name: unsafe { self.user_name.to_string_lossy() },
             user_id: self.user_id,
             user_id_long: self.user_id_long,
-            user_id_str: self.user_id_str.to_string_lossy(),
+            user_id_str: unsafe { self.user_id_str.to_string_lossy() },
             user_guard_level: self.user_guard_level,
-            gift_user: self.gift_user.to_string_lossy(),
-            gift_name: self.gift_name.to_string_lossy(),
-            gift_num: self.gift_num.to_string_lossy(),
+            gift_user: unsafe { self.gift_user.to_string_lossy() },
+            gift_name: unsafe { self.gift_name.to_string_lossy() },
+            gift_num: unsafe { self.gift_num.to_string_lossy() },
             gift_count: self.gift_count,
-            gift_rcost: self.gift_rcost.to_string_lossy(),
+            gift_rcost: unsafe { self.gift_rcost.to_string_lossy() },
             gift_ranking,
             is_admin: self.is_admin != 0,
             is_vip: self.is_vip != 0,
-            room_id: self.room_id.to_string_lossy(),
-            raw_data: self.raw_data.to_string_lossy(),
+            room_id: unsafe { self.room_id.to_string_lossy() },
+            raw_data: unsafe { self.raw_data.to_string_lossy() },
             json_version: self.json_version,
-            price: self.price.to_string_lossy(),
+            price: unsafe { self.price.to_string_lossy() },
             sc_keep_time: self.sc_keep_time,
             watched_count: self.watched_count,
-            raw_data_jtoken: self.raw_data_jtoken.to_string_lossy(),
+            raw_data_jtoken: unsafe { self.raw_data_jtoken.to_string_lossy() },
         }
     }
 }
@@ -193,7 +213,7 @@ mod tests {
     #[test]
     fn ffi_str_round_trips_utf8() {
         let text = "hello";
-        let ffi = FfiStr::from_str(text);
+        let ffi = FfiStr::borrowed(text);
 
         let decoded = unsafe { ffi.to_string_lossy() };
 

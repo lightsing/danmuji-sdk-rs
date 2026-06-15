@@ -16,3 +16,6 @@ categories = ["api-bindings", "development-tools::ffi"]
 name = "danmuji_sdk"
 
 [dependencies]
+
+[lints]
+workspace = true

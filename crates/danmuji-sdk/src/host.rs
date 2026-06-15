@@ -12,7 +12,7 @@ impl Host {
         if let Some(api) = host_api() {
             let text = text.as_ref();
             unsafe {
-                (api.log)(api.userdata, FfiStr::from_str(text));
+                (api.log)(api.userdata, FfiStr::borrowed(text));
             }
         }
     }
@@ -23,7 +23,7 @@ impl Host {
             unsafe {
                 (api.add_dm)(
                     api.userdata,
-                    FfiStr::from_str(text),
+                    FfiStr::borrowed(text),
                     if fullscreen { 1 } else { 0 },
                 );
             }
@@ -34,7 +34,7 @@ impl Host {
         if let Some(api) = host_api() {
             let text = text.as_ref();
             unsafe {
-                (api.send_ssp_msg)(api.userdata, FfiStr::from_str(text));
+                (api.send_ssp_msg)(api.userdata, FfiStr::borrowed(text));
             }
         }
     }

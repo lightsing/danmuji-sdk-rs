@@ -11,3 +11,5 @@ crate-type = ["cdylib"]
 [dependencies]
 danmuji-sdk = { path = "../crates/danmuji-sdk" }
 
+[lints]
+workspace = true

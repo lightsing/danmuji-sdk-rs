@@ -63,8 +63,11 @@ macro_rules! export_plugin {
             }
         }
 
+        #[doc = "# Safety\n\n`out` must be non-null and point to writable memory for one `FfiPluginMetadata`."]
         #[no_mangle]
-        pub extern "C" fn danmuji_rs_plugin_metadata(out: *mut $crate::ffi::FfiPluginMetadata) {
+        pub unsafe extern "C" fn danmuji_rs_plugin_metadata(
+            out: *mut $crate::ffi::FfiPluginMetadata,
+        ) {
             if out.is_null() {
                 return;
             }
@@ -137,8 +140,11 @@ macro_rules! export_plugin {
             danmuji_rs_with_plugin(|plugin| plugin.room_count($crate::Host::new(), user_count));
         }
 
+        #[doc = "# Safety\n\n`danmaku` must be non-null and point to a readable `FfiDanmaku` value."]
         #[no_mangle]
-        pub extern "C" fn danmuji_rs_plugin_on_danmaku(danmaku: *const $crate::ffi::FfiDanmaku) {
+        pub unsafe extern "C" fn danmuji_rs_plugin_on_danmaku(
+            danmaku: *const $crate::ffi::FfiDanmaku,
+        ) {
             if danmaku.is_null() {
                 return;
             }

@@ -25,7 +25,7 @@ pub fn read_bridge_template(
     refresh_sdk: bool,
 ) -> Result<Vec<u8>> {
     if let Some(path) = explicit_template {
-        return Ok(fs::read(path).wrap_err_with(|| format!("failed to read {}", path.display()))?);
+        return fs::read(path).wrap_err_with(|| format!("failed to read {}", path.display()));
     }
 
     let sdk_version = resolve_sdk_version(explicit_sdk_version, project_dir, sdk_repo)?;

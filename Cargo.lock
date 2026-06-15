@@ -63,7 +63,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-danmuji"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "clap-cargo",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "danmuji-sdk"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "digest"

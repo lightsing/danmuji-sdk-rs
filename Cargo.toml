@@ -7,9 +7,15 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 rust-version = "1.70"
 repository = "https://github.com/lightsing/danmuji-sdk-rs"
 homepage = "https://github.com/lightsing/danmuji-sdk-rs"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = "warn"

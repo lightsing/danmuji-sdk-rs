@@ -26,7 +26,7 @@ fn run() -> Result<()> {
     let CargoCli::Danmuji(cli) = CargoCli::parse();
 
     match cli.command {
-        Commands::Build(options) => build(options),
+        Commands::Build(options) => build(*options),
         Commands::Package(options) => package(options),
         Commands::New(options) => create_new(options),
         Commands::Upgrade(options) => upgrade(options),
@@ -54,7 +54,7 @@ struct DanmujiArgs {
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(about = "Build a Rust cdylib and package a single B站弹幕姬 plugin DLL")]
-    Build(BuildOptions),
+    Build(Box<BuildOptions>),
     #[command(about = "Package an existing native DLL into a single B站弹幕姬 plugin DLL")]
     Package(PackageOptions),
     #[command(about = "Create a new Rust B站弹幕姬 plugin project")]
