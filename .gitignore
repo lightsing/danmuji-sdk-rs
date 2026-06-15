@@ -2,6 +2,7 @@ target/
 dist/
 bin/
 obj/
+bridge/prebuilt/
+crates/cargo-danmuji/assets/
 *.user
 *.suo
-

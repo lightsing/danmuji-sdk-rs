@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cargo-danmuji",
     "crates/danmuji-sdk",
     "example",
 ]

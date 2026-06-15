@@ -1,0 +1,449 @@
+use std::env;
+use std::ffi::OsString;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use clap::{Args, Parser, Subcommand};
+use clap_cargo::{Features, Manifest, Workspace};
+use eyre::{eyre, Result, WrapErr};
+use sha2::{Digest, Sha256};
+
+const BRIDGE_TEMPLATE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/DanmujiRustBridge.dll"));
+const OVERLAY_MAGIC: &[u8; 16] = b"DMJRSOVL00000001";
+const FOOTER_VERSION: u32 = 1;
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("cargo-danmuji: {error}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
+    let CargoCli::Danmuji(cli) = CargoCli::parse();
+
+    match cli.command {
+        Commands::Build(options) => build(options),
+        Commands::Package(options) => package(options),
+        Commands::New(options) => create_new(options),
+    }
+}
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "cargo",
+    bin_name = "cargo",
+    styles = clap_cargo::style::CLAP_STYLING
+)]
+enum CargoCli {
+    #[command(name = "danmuji", version, about, long_about = None)]
+    Danmuji(DanmujiArgs),
+}
+
+#[derive(Args, Debug)]
+#[command(about = "Build and package Rust plugins for Bilibili Danmuji")]
+struct DanmujiArgs {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    #[command(about = "Build a Rust cdylib and package a single Danmuji plugin DLL")]
+    Build(BuildOptions),
+    #[command(about = "Package an existing native DLL into a single Danmuji plugin DLL")]
+    Package(PackageOptions),
+    #[command(about = "Create a new Rust Danmuji plugin project")]
+    New(NewOptions),
+}
+
+#[derive(Args, Debug)]
+struct BuildOptions {
+    #[command(flatten)]
+    manifest: Manifest,
+
+    #[command(flatten)]
+    workspace: Workspace,
+
+    #[command(flatten)]
+    features: Features,
+
+    #[arg(long)]
+    lib_name: Option<String>,
+
+    #[arg(long)]
+    release: bool,
+
+    #[arg(long)]
+    target: Option<String>,
+
+    #[arg(long)]
+    target_dir: Option<PathBuf>,
+
+    #[arg(long, default_value = "dist")]
+    out_dir: PathBuf,
+
+    #[arg(short = 'o', long)]
+    output: Option<PathBuf>,
+
+    #[arg(long)]
+    template: Option<PathBuf>,
+
+    #[arg(last = true)]
+    cargo_args: Vec<String>,
+}
+
+fn build(options: BuildOptions) -> Result<()> {
+    if options.workspace.workspace || options.workspace.all || !options.workspace.exclude.is_empty()
+    {
+        return Err(eyre!(
+            "cargo danmuji build packages one plugin DLL; use --package to select one package"
+        ));
+    }
+
+    if options.workspace.package.len() > 1 {
+        return Err(eyre!(
+            "cargo danmuji build packages one plugin DLL; pass only one --package"
+        ));
+    }
+
+    let manifest_path = options
+        .manifest
+        .manifest_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("Cargo.toml"));
+    let manifest = parse_manifest(&manifest_path)?;
+    let package_name = options
+        .workspace
+        .package
+        .first()
+        .cloned()
+        .clone()
+        .or(manifest.package_name)
+        .ok_or_else(|| eyre!("package name is required; pass --package"))?;
+    let lib_name = options
+        .lib_name
+        .clone()
+        .or(manifest.lib_name)
+        .unwrap_or_else(|| package_name.replace('-', "_"));
+
+    let manifest_path = absolute_path(&manifest_path)?;
+    let manifest_dir = manifest_path
+        .parent()
+        .ok_or_else(|| eyre!("manifest path has no parent directory"))?;
+    let target_dir = options
+        .target_dir
+        .clone()
+        .unwrap_or_else(|| manifest_dir.join("target"));
+    let profile_dir = if options.release { "release" } else { "debug" };
+
+    let mut command = Command::new(cargo_binary());
+    command
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(&manifest_path)
+        .arg("--target-dir")
+        .arg(&target_dir);
+
+    if !options.workspace.package.is_empty() {
+        command.arg("--package").arg(&package_name);
+    }
+
+    if options.features.all_features {
+        command.arg("--all-features");
+    }
+
+    if options.features.no_default_features {
+        command.arg("--no-default-features");
+    }
+
+    for feature in &options.features.features {
+        command.arg("--features").arg(feature);
+    }
+
+    if options.release {
+        command.arg("--release");
+    }
+
+    if let Some(target) = &options.target {
+        command.arg("--target").arg(target);
+    }
+
+    command.args(&options.cargo_args);
+
+    run_command(command)?;
+
+    let native_dll = native_dll_path(
+        &target_dir,
+        options.target.as_deref(),
+        profile_dir,
+        &lib_name,
+    );
+    if !native_dll.exists() {
+        return Err(eyre!("native DLL not found: {}", native_dll.display()));
+    }
+
+    let output = options.output.unwrap_or_else(|| {
+        options
+            .out_dir
+            .join(format!("{}.dll", package_name.replace('-', "_")))
+    });
+    let template = read_template(options.template.as_deref())?;
+
+    write_single_file_plugin(&template, &native_dll, &output)?;
+    println!("Packaged Danmuji plugin in {}", output.display());
+
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+struct PackageOptions {
+    #[arg(long)]
+    native: PathBuf,
+
+    #[arg(short = 'o', long)]
+    output: PathBuf,
+
+    #[arg(long)]
+    template: Option<PathBuf>,
+}
+
+fn package(options: PackageOptions) -> Result<()> {
+    let template = read_template(options.template.as_deref())?;
+    write_single_file_plugin(&template, &options.native, &options.output)?;
+    println!("Packaged Danmuji plugin in {}", options.output.display());
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+struct NewOptions {
+    name: String,
+
+    #[arg(long)]
+    sdk_path: Option<PathBuf>,
+}
+
+fn create_new(options: NewOptions) -> Result<()> {
+    let root = PathBuf::from(&options.name);
+    if root.exists() {
+        return Err(eyre!("path already exists: {}", root.display()));
+    }
+
+    let crate_name = options.name.replace('_', "-");
+    let lib_name = crate_name.replace('-', "_");
+    let struct_name = to_pascal_case(&crate_name);
+
+    fs::create_dir_all(root.join("src"))
+        .wrap_err_with(|| format!("failed to create {}", root.join("src").display()))?;
+
+    let dependency = if let Some(path) = options.sdk_path {
+        let path = path.display().to_string().replace('\\', "/");
+        format!("danmuji-sdk = {{ path = \"{path}\" }}")
+    } else {
+        "danmuji-sdk = \"0.1\"".to_string()
+    };
+
+    fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\nname = \"{lib_name}\"\ncrate-type = [\"cdylib\"]\n\n[dependencies]\n{dependency}\n"
+        ),
+    )
+    .wrap_err_with(|| format!("failed to write {}", root.join("Cargo.toml").display()))?;
+
+    let lib_rs = root.join("src").join("lib.rs");
+    fs::write(
+        &lib_rs,
+        format!(
+            "use danmuji_sdk::{{Danmaku, DanmujiPlugin, Host, MsgType, PluginContext, PluginMetadata}};\n\n\
+#[derive(Default)]\n\
+struct {struct_name};\n\n\
+impl DanmujiPlugin for {struct_name} {{\n    \
+fn metadata(&self) -> PluginMetadata {{\n        \
+PluginMetadata {{\n            \
+name: \"{crate_name}\",\n            \
+author: \"\",\n            \
+contact: \"\",\n            \
+version: \"v0.1.0\",\n            \
+description: \"Rust Danmuji plugin\",\n        \
+}}\n    \
+}}\n\n    \
+fn start(&mut self, host: Host, _ctx: PluginContext) {{\n        \
+host.log(\"{crate_name} started\");\n    \
+}}\n\n    \
+fn danmaku(&mut self, host: Host, danmaku: Danmaku) {{\n        \
+if danmaku.msg_type == MsgType::Comment {{\n            \
+let user = danmaku.user_name.as_deref().unwrap_or(\"unknown\");\n            \
+let text = danmaku.comment_text.as_deref().unwrap_or(\"\");\n            \
+host.log(format!(\"{{user}}: {{text}}\"));\n        \
+}}\n    \
+}}\n\
+}}\n\n\
+danmuji_sdk::export_plugin!({struct_name}::default());\n"
+        ),
+    )
+    .wrap_err_with(|| format!("failed to write {}", lib_rs.display()))?;
+
+    println!("Created Danmuji plugin project in {}", root.display());
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct ManifestInfo {
+    package_name: Option<String>,
+    lib_name: Option<String>,
+}
+
+fn parse_manifest(path: &Path) -> Result<ManifestInfo> {
+    let text = fs::read_to_string(path)
+        .wrap_err_with(|| format!("failed to read manifest {}", path.display()))?;
+    let mut section = String::new();
+    let mut info = ManifestInfo::default();
+
+    for raw_line in text.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line.trim_matches(&['[', ']'][..]).to_string();
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+
+        let key = key.trim();
+        let value = trim_toml_string(value.trim());
+
+        match (section.as_str(), key) {
+            ("package", "name") => info.package_name = value,
+            ("lib", "name") => info.lib_name = value,
+            _ => {}
+        }
+    }
+
+    Ok(info)
+}
+
+fn trim_toml_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        Some(value[1..value.len() - 1].to_string())
+    } else {
+        None
+    }
+}
+
+fn native_dll_path(
+    target_dir: &Path,
+    target: Option<&str>,
+    profile: &str,
+    lib_name: &str,
+) -> PathBuf {
+    let mut path = target_dir.to_path_buf();
+    if let Some(target) = target {
+        path.push(target);
+    }
+
+    path.push(profile);
+    path.push(format!("{lib_name}.dll"));
+    path
+}
+
+fn read_template(path: Option<&Path>) -> Result<Vec<u8>> {
+    match path {
+        Some(path) => {
+            Ok(fs::read(path).wrap_err_with(|| format!("failed to read {}", path.display()))?)
+        }
+        None => Ok(BRIDGE_TEMPLATE.to_vec()),
+    }
+}
+
+fn write_single_file_plugin(template: &[u8], native_dll: &Path, output: &Path) -> Result<()> {
+    let native = fs::read(native_dll)
+        .wrap_err_with(|| format!("failed to read native DLL {}", native_dll.display()))?;
+    let hash = Sha256::digest(&native);
+
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .wrap_err_with(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+
+    let mut file = fs::File::create(output)
+        .wrap_err_with(|| format!("failed to create {}", output.display()))?;
+    file.write_all(template)
+        .wrap_err_with(|| format!("failed to write bridge template to {}", output.display()))?;
+    file.write_all(&native)
+        .wrap_err_with(|| format!("failed to write native DLL to {}", output.display()))?;
+    file.write_all(&hash)
+        .wrap_err_with(|| format!("failed to write overlay hash to {}", output.display()))?;
+    file.write_all(&(native.len() as u64).to_le_bytes())
+        .wrap_err_with(|| format!("failed to write overlay length to {}", output.display()))?;
+    file.write_all(&FOOTER_VERSION.to_le_bytes())
+        .wrap_err_with(|| format!("failed to write overlay version to {}", output.display()))?;
+    file.write_all(OVERLAY_MAGIC)
+        .wrap_err_with(|| format!("failed to write overlay magic to {}", output.display()))?;
+    file.flush()
+        .wrap_err_with(|| format!("failed to flush {}", output.display()))?;
+
+    Ok(())
+}
+
+fn run_command(mut command: Command) -> Result<()> {
+    let status = command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .wrap_err("failed to run cargo build")?;
+
+    if !status.success() {
+        return Err(eyre!("command failed with status {status}"));
+    }
+
+    Ok(())
+}
+
+fn cargo_binary() -> OsString {
+    env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"))
+}
+
+fn absolute_path(path: &Path) -> io::Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(env::current_dir()?.join(path))
+    }
+}
+
+fn to_pascal_case(name: &str) -> String {
+    let mut output = String::new();
+    let mut upper_next = true;
+
+    for ch in name.chars() {
+        if ch == '-' || ch == '_' || ch == ' ' {
+            upper_next = true;
+            continue;
+        }
+
+        if upper_next {
+            output.extend(ch.to_uppercase());
+            upper_next = false;
+        } else {
+            output.push(ch);
+        }
+    }
+
+    if output.is_empty() {
+        "Plugin".to_string()
+    } else {
+        output
+    }
+}

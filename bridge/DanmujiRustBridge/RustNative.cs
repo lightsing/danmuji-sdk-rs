@@ -1,7 +1,9 @@
 using System;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DanmujiSdkRust.Bridge
@@ -9,20 +11,183 @@ namespace DanmujiSdkRust.Bridge
     internal static class RustNative
     {
         private const string NativeLibraryName = "danmuji_rust_plugin";
+        private const string NativeDllFileName = "danmuji_rust_plugin.dll";
+        private const int OverlayFooterLength = 60;
+        private static readonly byte[] OverlayMagic = Encoding.ASCII.GetBytes("DMJRSOVL00000001");
 
         static RustNative()
         {
-            string assemblyPath = Assembly.GetExecutingAssembly().Location;
-            string assemblyDirectory = Path.GetDirectoryName(assemblyPath);
+            string nativePath = ResolveNativeLibraryPath();
+            string nativeDirectory = Path.GetDirectoryName(nativePath);
 
-            if (!string.IsNullOrEmpty(assemblyDirectory))
+            if (!string.IsNullOrEmpty(nativeDirectory))
             {
-                SetDllDirectory(assemblyDirectory);
+                SetDllDirectory(nativeDirectory);
+            }
+
+            IntPtr handle = LoadLibrary(nativePath);
+            if (handle == IntPtr.Zero)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Failed to load Rust native plugin: " + nativePath);
             }
         }
 
         [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool SetDllDirectory(string lpPathName);
+
+        [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr LoadLibrary(string lpFileName);
+
+        private static string ResolveNativeLibraryPath()
+        {
+            string assemblyPath = Assembly.GetExecutingAssembly().Location;
+            string overlayPath = TryExtractOverlayNativeDll(assemblyPath);
+
+            if (!string.IsNullOrEmpty(overlayPath))
+            {
+                return overlayPath;
+            }
+
+            string assemblyDirectory = Path.GetDirectoryName(assemblyPath);
+            if (string.IsNullOrEmpty(assemblyDirectory))
+            {
+                assemblyDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            }
+
+            return Path.Combine(assemblyDirectory, NativeDllFileName);
+        }
+
+        private static string TryExtractOverlayNativeDll(string assemblyPath)
+        {
+            if (string.IsNullOrEmpty(assemblyPath) || !File.Exists(assemblyPath))
+            {
+                return null;
+            }
+
+            using (FileStream stream = new FileStream(
+                assemblyPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (stream.Length < OverlayFooterLength)
+                {
+                    return null;
+                }
+
+                byte[] footer = new byte[OverlayFooterLength];
+                stream.Seek(-OverlayFooterLength, SeekOrigin.End);
+                ReadExactly(stream, footer, 0, footer.Length);
+
+                if (!FooterHasMagic(footer))
+                {
+                    return null;
+                }
+
+                uint version = BitConverter.ToUInt32(footer, 40);
+                if (version != 1)
+                {
+                    throw new InvalidOperationException("Unsupported danmuji native overlay version: " + version);
+                }
+
+                ulong payloadLength = BitConverter.ToUInt64(footer, 32);
+                if (payloadLength > int.MaxValue || payloadLength > (ulong)(stream.Length - OverlayFooterLength))
+                {
+                    throw new InvalidOperationException("Invalid danmuji native overlay length.");
+                }
+
+                long payloadOffset = stream.Length - OverlayFooterLength - (long)payloadLength;
+                byte[] payload = new byte[(int)payloadLength];
+                stream.Seek(payloadOffset, SeekOrigin.Begin);
+                ReadExactly(stream, payload, 0, payload.Length);
+
+                byte[] expectedHash = new byte[32];
+                Buffer.BlockCopy(footer, 0, expectedHash, 0, expectedHash.Length);
+                byte[] actualHash;
+                using (SHA256 sha256 = SHA256.Create())
+                {
+                    actualHash = sha256.ComputeHash(payload);
+                }
+
+                if (!BytesEqual(expectedHash, actualHash))
+                {
+                    throw new InvalidOperationException("Rust native overlay hash mismatch.");
+                }
+
+                string hashText = ToHex(actualHash);
+                string directory = Path.Combine(Path.GetTempPath(), "danmuji-sdk-rs", hashText);
+                Directory.CreateDirectory(directory);
+
+                string nativePath = Path.Combine(directory, NativeDllFileName);
+                if (!File.Exists(nativePath) || new FileInfo(nativePath).Length != payload.Length)
+                {
+                    File.WriteAllBytes(nativePath, payload);
+                }
+
+                return nativePath;
+            }
+        }
+
+        private static bool FooterHasMagic(byte[] footer)
+        {
+            int offset = 44;
+            for (int i = 0; i < OverlayMagic.Length; i++)
+            {
+                if (footer[offset + i] != OverlayMagic[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void ReadExactly(Stream stream, byte[] buffer, int offset, int count)
+        {
+            int readTotal = 0;
+            while (readTotal < count)
+            {
+                int read = stream.Read(buffer, offset + readTotal, count - readTotal);
+                if (read == 0)
+                {
+                    throw new EndOfStreamException();
+                }
+
+                readTotal += read;
+            }
+        }
+
+        private static bool BytesEqual(byte[] left, byte[] right)
+        {
+            if (left.Length != right.Length)
+            {
+                return false;
+            }
+
+            int diff = 0;
+            for (int i = 0; i < left.Length; i++)
+            {
+                diff |= left[i] ^ right[i];
+            }
+
+            return diff == 0;
+        }
+
+        private static string ToHex(byte[] bytes)
+        {
+            char[] chars = new char[bytes.Length * 2];
+            const string hex = "0123456789abcdef";
+
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                chars[i * 2] = hex[bytes[i] >> 4];
+                chars[i * 2 + 1] = hex[bytes[i] & 0x0f];
+            }
+
+            return new string(chars);
+        }
 
         [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl, EntryPoint = "danmuji_rs_plugin_metadata")]
         internal static extern void PluginMetadata(out RustPluginMetadata metadata);
@@ -182,4 +347,3 @@ namespace DanmujiSdkRust.Bridge
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int HostGetFlagDelegate(IntPtr userdata);
 }
-

@@ -5,6 +5,7 @@ Rust wrapper for the Bilibili Danmuji .NET plugin SDK.
 The Danmuji host loads .NET Framework plugins that inherit `DMPlugin`, so Rust
 cannot replace the .NET class directly. This repository provides:
 
+- `crates/cargo-danmuji`: Cargo subcommand that builds and packages plugins.
 - `crates/danmuji-sdk`: Rust types, host API, lifecycle/event trait, and export macro.
 - `example`: a complete example plugin that handles comments, gifts, SC, and admin summaries.
 - `bridge/DanmujiRustBridge`: a small .NET Framework bridge that inherits `DMPlugin`
@@ -15,32 +16,38 @@ cannot replace the .NET class directly. This repository provides:
 Package the example plugin:
 
 ```powershell
-.\example\build.ps1 -Configuration Release
+cargo run -p cargo-danmuji -- danmuji build `
+    --manifest-path Cargo.toml `
+    --package danmuji-rust-example-plugin `
+    --lib-name danmuji_rust_example_plugin `
+    --release `
+    --output example\dist\RustSampleDanmujiPlugin.dll
 ```
 
-The example package is written to `example\dist\`.
+The example package is written to `example\dist\RustSampleDanmujiPlugin.dll`.
 
-Normal packaging only builds the Rust plugin and uses the prebuilt .NET bridge
-from `bridge/prebuilt`.
+Normal packaging builds the Rust plugin, uses the bridge template prepared by
+`cargo-danmuji`'s build script, appends the Rust native DLL as a PE overlay, and
+writes one plugin DLL.
 
 The Danmuji host still requires a .NET Framework plugin DLL at runtime because
-it discovers plugins by loading assemblies that inherit `DMPlugin`. The bridge
-DLL is stable and already checked in, so day-to-day Rust plugin builds do not
-need the .NET SDK. Rebuild the bridge only after changing C# bridge code:
+it discovers plugins by loading assemblies that inherit `DMPlugin`. Day-to-day
+Rust plugin builds do not run MSBuild unless `cargo-danmuji` itself needs to be
+rebuilt. After changing C# bridge code, rerun the same command; Cargo will rerun
+`cargo-danmuji`'s build script when bridge sources changed. To force that path:
 
 ```powershell
-.\example\build.ps1 -Configuration Release -RebuildBridge
+cargo clean -p cargo-danmuji
 ```
 
-The root build script is a generic packager. Custom plugin projects should call
-it with an explicit package and native library name:
+External plugin authors should install the cargo subcommand and build from their
+own plugin crate:
 
 ```powershell
-.\build.ps1 `
-    -Configuration Release `
-    -RustPackage "danmuji-rust-example-plugin" `
-    -RustLibraryName "danmuji_rust_example_plugin" `
-    -OutputDirectory "example\dist"
+cargo install cargo-danmuji
+cargo danmuji new my-plugin
+cd my-plugin
+cargo danmuji build --release --output dist\MyPlugin.dll
 ```
 
 ## Edit the Rust plugin
@@ -61,11 +68,12 @@ danmuji_sdk::export_plugin!(SamplePlugin::default());
 
 ## Deploy
 
-Copy the files from the package output directory into Danmuji's plugin folder.
-For the sample plugin, use `example\dist\`:
+Copy the generated plugin DLL into Danmuji's plugin folder. For the sample
+plugin, use:
 
-- `DanmujiRustBridge.dll`
-- `danmuji_rust_plugin.dll`
+```text
+example\dist\RustSampleDanmujiPlugin.dll
+```
 
 `BilibiliDM_PluginFramework.dll` and `Newtonsoft.Json.dll` are not packaged
 because Danmuji already provides them in production.

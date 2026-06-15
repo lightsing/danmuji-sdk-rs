@@ -13,10 +13,16 @@ It demonstrates:
 Build and package it from the repository root:
 
 ```powershell
-.\example\build.ps1 -Configuration Release
+cargo run -p cargo-danmuji -- danmuji build `
+    --manifest-path Cargo.toml `
+    --package danmuji-rust-example-plugin `
+    --lib-name danmuji_rust_example_plugin `
+    --release `
+    --output example\dist\RustSampleDanmujiPlugin.dll
 ```
 
-The packaged files are written to `example\dist\`.
+The packaged single-file plugin is written to `example\dist\RustSampleDanmujiPlugin.dll`.
 
-This command only builds the Rust example and uses the prebuilt bridge runtime.
-Pass `-RebuildBridge` only when changing the C# bridge.
+This command only builds the Rust example and uses the bridge template prepared
+by `cargo-danmuji`'s build script. Run `cargo clean -p cargo-danmuji` only when
+you need to force a bridge template rebuild.
