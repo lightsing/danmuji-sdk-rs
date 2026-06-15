@@ -1,3 +1,5 @@
+mod bridge;
+
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -10,7 +12,6 @@ use clap_cargo::{Features, Manifest, Workspace};
 use eyre::{eyre, Result, WrapErr};
 use sha2::{Digest, Sha256};
 
-const BRIDGE_TEMPLATE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/DanmujiRustBridge.dll"));
 const OVERLAY_MAGIC: &[u8; 16] = b"DMJRSOVL00000001";
 const FOOTER_VERSION: u32 = 1;
 
@@ -28,6 +29,7 @@ fn run() -> Result<()> {
         Commands::Build(options) => build(options),
         Commands::Package(options) => package(options),
         Commands::New(options) => create_new(options),
+        Commands::Upgrade(options) => upgrade(options),
     }
 }
 
@@ -57,6 +59,8 @@ enum Commands {
     Package(PackageOptions),
     #[command(about = "Create a new Rust B站弹幕姬 plugin project")]
     New(NewOptions),
+    #[command(about = "Update .danmuji-version to the latest B站弹幕姬 SDK tag")]
+    Upgrade(UpgradeOptions),
 }
 
 #[derive(Args, Debug)]
@@ -88,11 +92,26 @@ struct BuildOptions {
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
-    #[arg(long)]
-    template: Option<PathBuf>,
+    #[command(flatten)]
+    bridge: BridgeOptions,
 
     #[arg(last = true)]
     cargo_args: Vec<String>,
+}
+
+#[derive(Args, Clone, Debug)]
+struct BridgeOptions {
+    #[arg(long)]
+    sdk_version: Option<String>,
+
+    #[arg(long, default_value_t = bridge::DEFAULT_SDK_REPO.to_string())]
+    sdk_repo: String,
+
+    #[arg(long)]
+    refresh_sdk: bool,
+
+    #[arg(long)]
+    template: Option<PathBuf>,
 }
 
 fn build(options: BuildOptions) -> Result<()> {
@@ -190,7 +209,13 @@ fn build(options: BuildOptions) -> Result<()> {
             .out_dir
             .join(format!("{}.dll", package_name.replace('-', "_")))
     });
-    let template = read_template(options.template.as_deref())?;
+    let template = bridge::read_bridge_template(
+        options.bridge.template.as_deref(),
+        manifest_dir,
+        &options.bridge.sdk_repo,
+        options.bridge.sdk_version.as_deref(),
+        options.bridge.refresh_sdk,
+    )?;
 
     write_single_file_plugin(&template, &native_dll, &output)?;
     println!("Packaged B站弹幕姬 plugin in {}", output.display());
@@ -206,12 +231,19 @@ struct PackageOptions {
     #[arg(short = 'o', long)]
     output: PathBuf,
 
-    #[arg(long)]
-    template: Option<PathBuf>,
+    #[command(flatten)]
+    bridge: BridgeOptions,
 }
 
 fn package(options: PackageOptions) -> Result<()> {
-    let template = read_template(options.template.as_deref())?;
+    let current_dir = env::current_dir().wrap_err("failed to read current directory")?;
+    let template = bridge::read_bridge_template(
+        options.bridge.template.as_deref(),
+        &current_dir,
+        &options.bridge.sdk_repo,
+        options.bridge.sdk_version.as_deref(),
+        options.bridge.refresh_sdk,
+    )?;
     write_single_file_plugin(&template, &options.native, &options.output)?;
     println!("Packaged B站弹幕姬 plugin in {}", options.output.display());
     Ok(())
@@ -223,6 +255,9 @@ struct NewOptions {
 
     #[arg(long)]
     sdk_path: Option<PathBuf>,
+
+    #[arg(long)]
+    sdk_version: Option<String>,
 }
 
 fn create_new(options: NewOptions) -> Result<()> {
@@ -286,7 +321,52 @@ danmuji_sdk::export_plugin!({struct_name}::default());\n"
     )
     .wrap_err_with(|| format!("failed to write {}", lib_rs.display()))?;
 
+    if let Some(sdk_version) = options.sdk_version {
+        bridge::write_version_file(&root, &sdk_version)?;
+    }
+
     println!("Created B站弹幕姬 plugin project in {}", root.display());
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+struct UpgradeOptions {
+    #[command(flatten)]
+    manifest: Manifest,
+
+    #[arg(long, default_value_t = bridge::DEFAULT_SDK_REPO.to_string())]
+    sdk_repo: String,
+}
+
+fn upgrade(options: UpgradeOptions) -> Result<()> {
+    let project_dir = project_dir_from_manifest(options.manifest.manifest_path.as_deref())?;
+    let upgrade = bridge::upgrade_version_file(&project_dir, &options.sdk_repo)?;
+
+    match upgrade.old_version {
+        Some(old) if old == upgrade.new_version => {
+            println!(
+                "{} is already at latest SDK {}",
+                upgrade.path.display(),
+                upgrade.new_version
+            );
+        }
+        Some(old) => {
+            println!(
+                "Updated {} from {} to {}",
+                upgrade.path.display(),
+                old,
+                upgrade.new_version
+            );
+        }
+        None => {
+            println!(
+                "Created {} with latest SDK {}",
+                upgrade.path.display(),
+                upgrade.new_version
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -355,15 +435,6 @@ fn native_dll_path(
     path
 }
 
-fn read_template(path: Option<&Path>) -> Result<Vec<u8>> {
-    match path {
-        Some(path) => {
-            Ok(fs::read(path).wrap_err_with(|| format!("failed to read {}", path.display()))?)
-        }
-        None => Ok(BRIDGE_TEMPLATE.to_vec()),
-    }
-}
-
 fn write_single_file_plugin(template: &[u8], native_dll: &Path, output: &Path) -> Result<()> {
     let native = fs::read(native_dll)
         .wrap_err_with(|| format!("failed to read native DLL {}", native_dll.display()))?;
@@ -421,6 +492,15 @@ fn absolute_path(path: &Path) -> io::Result<PathBuf> {
     } else {
         Ok(env::current_dir()?.join(path))
     }
+}
+
+fn project_dir_from_manifest(manifest_path: Option<&Path>) -> Result<PathBuf> {
+    let manifest_path = manifest_path.unwrap_or_else(|| Path::new("Cargo.toml"));
+    let manifest_path = absolute_path(manifest_path)?;
+    manifest_path
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| eyre!("manifest path has no parent directory"))
 }
 
 fn to_pascal_case(name: &str) -> String {

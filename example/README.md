@@ -15,4 +15,4 @@ cargo run -p cargo-danmuji -- danmuji build `
 
 输出文件是 `example\dist\RustSampleDanmujiPlugin.dll`。它已经是单文件 B站弹幕姬插件，不需要额外携带 `BilibiliDM_PluginFramework.dll` 或 `Newtonsoft.Json.dll`。
 
-这个命令只构建 Rust 示例插件，并复用 `cargo-danmuji` 的 .NET 桥接模板；通常不需要手动编译桥接层。
+这个命令会读取仓库根目录的 `.danmuji-version`，由 `cargo-danmuji` 在临时缓存目录里拉取对应上游版本并生成 .NET 桥接 DLL。如果项目没有 `.danmuji-version`，首次构建会自动查询上游最新 tag 并创建它。首次构建会编译桥接层，之后会复用缓存。

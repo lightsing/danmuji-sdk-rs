@@ -2,12 +2,10 @@
 name = "cargo-danmuji"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 include = [
     "Cargo.toml",
-    "build.rs",
+    "bridge/**",
     "src/**",
-    "assets/DanmujiRustBridge.dll",
 ]
 
 [[bin]]
