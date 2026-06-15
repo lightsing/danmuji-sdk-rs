@@ -18,3 +18,5 @@ Build and package it from the repository root:
 
 The packaged files are written to `example\dist\`.
 
+This command only builds the Rust example and uses the prebuilt bridge runtime.
+Pass `-RebuildBridge` only when changing the C# bridge.

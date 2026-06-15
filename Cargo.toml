@@ -2,6 +2,5 @@
 members = [
     "crates/danmuji-sdk",
     "example",
-    "plugin",
 ]
 resolver = "2"

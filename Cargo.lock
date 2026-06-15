@@ -10,12 +10,5 @@ dependencies = [
 ]
 
 [[package]]
-name = "danmuji-rust-plugin"
-version = "0.1.0"
-dependencies = [
- "danmuji-sdk",
-]
-
-[[package]]
 name = "danmuji-sdk"
 version = "0.1.0"
