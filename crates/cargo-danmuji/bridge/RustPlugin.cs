@@ -1,7 +1,9 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using BilibiliDM_PluginFramework;
 using Newtonsoft.Json;
 
@@ -15,14 +17,17 @@ namespace DanmujiSdkRust.Bridge
         private static readonly HostGetRoomIdDelegate GetRoomIdCallback = HostGetRoomId;
         private static readonly HostGetFlagDelegate GetStatusCallback = HostGetStatus;
         private static readonly HostGetFlagDelegate GetDebugModeCallback = HostGetDebugMode;
+        private static readonly HostGetStringDelegate GetPluginPathCallback = HostGetPluginPath;
 
         private readonly GCHandle selfHandle;
+        private readonly string pluginPath;
         private bool nativeAvailable;
 
         public RustPlugin()
         {
             nativeAvailable = true;
             selfHandle = GCHandle.Alloc(this);
+            pluginPath = Assembly.GetExecutingAssembly().Location;
 
             PluginName = "Rust Plugin";
             PluginAuth = "";
@@ -89,7 +94,8 @@ namespace DanmujiSdkRust.Bridge
                     SendSspMsg = SendSspMsgCallback,
                     GetRoomId = GetRoomIdCallback,
                     GetStatus = GetStatusCallback,
-                    GetDebugMode = GetDebugModeCallback
+                    GetDebugMode = GetDebugModeCallback,
+                    GetPluginPath = GetPluginPathCallback
                 };
 
                 RustNative.SetHost(ref api);
@@ -298,6 +304,24 @@ namespace DanmujiSdkRust.Bridge
         {
             RustPlugin plugin;
             return TryGetPlugin(userdata, out plugin) && plugin.DebugMode ? 1 : 0;
+        }
+
+        private static UIntPtr HostGetPluginPath(IntPtr userdata, IntPtr buffer, UIntPtr bufferLen)
+        {
+            RustPlugin plugin;
+            if (!TryGetPlugin(userdata, out plugin) || string.IsNullOrEmpty(plugin.pluginPath))
+            {
+                return UIntPtr.Zero;
+            }
+
+            byte[] bytes = Encoding.UTF8.GetBytes(plugin.pluginPath);
+            ulong capacity = bufferLen.ToUInt64();
+            if (buffer != IntPtr.Zero && capacity >= (ulong)bytes.Length)
+            {
+                Marshal.Copy(bytes, 0, buffer, bytes.Length);
+            }
+
+            return new UIntPtr((uint)bytes.Length);
         }
     }
 }

@@ -71,6 +71,8 @@ Rust 插件实现 `DanmujiPlugin`，并导出桥接入口：
 danmuji_sdk::export_plugin!(MyPlugin::default());
 ```
 
+需要读取插件旁边的配置或资源时，可以通过 `host.plugin_dir()` 获取弹幕姬实际加载的插件 DLL 所在目录。
+
 ## 构建说明
 
 日常执行 `cargo danmuji build` 会先构建 Rust 插件，再按 SDK 版本准备 .NET 桥接 DLL，并把 Rust native DLL 追加到桥接 DLL 末尾，输出单个插件 `.dll`。

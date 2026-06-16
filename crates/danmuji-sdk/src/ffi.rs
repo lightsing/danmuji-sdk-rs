@@ -9,6 +9,8 @@ pub type HostAddDmFn = unsafe extern "C" fn(userdata: *mut c_void, text: FfiStr,
 pub type HostSendSspMsgFn = unsafe extern "C" fn(userdata: *mut c_void, text: FfiStr);
 pub type HostGetRoomIdFn = unsafe extern "C" fn(userdata: *mut c_void, room_id: *mut i32) -> i32;
 pub type HostGetFlagFn = unsafe extern "C" fn(userdata: *mut c_void) -> i32;
+pub type HostGetStringFn =
+    unsafe extern "C" fn(userdata: *mut c_void, buffer: *mut u8, buffer_len: usize) -> usize;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -83,6 +85,7 @@ pub struct FfiHostApi {
     pub get_room_id: HostGetRoomIdFn,
     pub get_status: HostGetFlagFn,
     pub get_debug_mode: HostGetFlagFn,
+    pub get_plugin_path: HostGetStringFn,
 }
 
 unsafe impl Send for FfiHostApi {}

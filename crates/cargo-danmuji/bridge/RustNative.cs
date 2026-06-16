@@ -290,6 +290,9 @@ namespace DanmujiSdkRust.Bridge
 
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public HostGetFlagDelegate GetDebugMode;
+
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public HostGetStringDelegate GetPluginPath;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -346,4 +349,7 @@ namespace DanmujiSdkRust.Bridge
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int HostGetFlagDelegate(IntPtr userdata);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate UIntPtr HostGetStringDelegate(IntPtr userdata, IntPtr buffer, UIntPtr bufferLen);
 }
