@@ -7,6 +7,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use cargo_metadata::{Metadata, MetadataCommand, Package};
 use clap::{Args, Parser, Subcommand};
 use clap_cargo::{Features, Manifest, Workspace};
 use eyre::{eyre, Result, WrapErr};
@@ -133,25 +134,23 @@ fn build(options: BuildOptions) -> Result<()> {
         .manifest_path
         .clone()
         .unwrap_or_else(|| PathBuf::from("Cargo.toml"));
-    let manifest = parse_manifest(&manifest_path)?;
-    let package_name = options
-        .workspace
-        .package
-        .first()
-        .cloned()
-        .clone()
-        .or(manifest.package_name)
-        .ok_or_else(|| eyre!("package name is required; pass --package"))?;
-    let lib_name = options
-        .lib_name
-        .clone()
-        .or(manifest.lib_name)
-        .unwrap_or_else(|| package_name.replace('-', "_"));
-
     let manifest_path = absolute_path(&manifest_path)?;
     let manifest_dir = manifest_path
         .parent()
         .ok_or_else(|| eyre!("manifest path has no parent directory"))?;
+
+    let metadata = load_metadata(&manifest_path)?;
+    let package = select_package(
+        &metadata,
+        &manifest_path,
+        options.workspace.package.first().map(String::as_str),
+    )?;
+    let package_name = package.name.clone();
+    let lib_name = match options.lib_name.clone() {
+        Some(lib_name) => lib_name,
+        None => cdylib_target_name(package)?,
+    };
+
     let target_dir = options
         .target_dir
         .clone()
@@ -370,55 +369,6 @@ fn upgrade(options: UpgradeOptions) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Default)]
-struct ManifestInfo {
-    package_name: Option<String>,
-    lib_name: Option<String>,
-}
-
-fn parse_manifest(path: &Path) -> Result<ManifestInfo> {
-    let text = fs::read_to_string(path)
-        .wrap_err_with(|| format!("failed to read manifest {}", path.display()))?;
-    let mut section = String::new();
-    let mut info = ManifestInfo::default();
-
-    for raw_line in text.lines() {
-        let line = raw_line.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if line.starts_with('[') && line.ends_with(']') {
-            section = line.trim_matches(&['[', ']'][..]).to_string();
-            continue;
-        }
-
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-
-        let key = key.trim();
-        let value = trim_toml_string(value.trim());
-
-        match (section.as_str(), key) {
-            ("package", "name") => info.package_name = value,
-            ("lib", "name") => info.lib_name = value,
-            _ => {}
-        }
-    }
-
-    Ok(info)
-}
-
-fn trim_toml_string(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
-        Some(value[1..value.len() - 1].to_string())
-    } else {
-        None
-    }
-}
-
 fn native_dll_path(
     target_dir: &Path,
     target: Option<&str>,
@@ -433,6 +383,54 @@ fn native_dll_path(
     path.push(profile);
     path.push(format!("{lib_name}.dll"));
     path
+}
+
+fn load_metadata(manifest_path: &Path) -> Result<Metadata> {
+    let mut command = MetadataCommand::new();
+    command.manifest_path(manifest_path).no_deps();
+    command
+        .exec()
+        .wrap_err_with(|| format!("failed to inspect {}", manifest_path.display()))
+}
+
+fn select_package<'a>(
+    metadata: &'a Metadata,
+    manifest_path: &Path,
+    package_name: Option<&str>,
+) -> Result<&'a Package> {
+    if let Some(package_name) = package_name {
+        return metadata
+            .packages
+            .iter()
+            .find(|package| package.name == package_name)
+            .ok_or_else(|| eyre!("package `{package_name}` not found in workspace metadata"));
+    }
+
+    if let Some(package) = metadata
+        .packages
+        .iter()
+        .find(|package| package.manifest_path.as_std_path() == manifest_path)
+    {
+        return Ok(package);
+    }
+
+    metadata
+        .root_package()
+        .ok_or_else(|| eyre!("package name is required; pass --package"))
+}
+
+fn cdylib_target_name(package: &Package) -> Result<String> {
+    package
+        .targets
+        .iter()
+        .find(|target| target.crate_types.iter().any(|kind| kind == "cdylib"))
+        .map(|target| target.name.clone())
+        .ok_or_else(|| {
+            eyre!(
+                "package `{}` has no cdylib target; add [lib] crate-type = [\"cdylib\"]",
+                package.name
+            )
+        })
 }
 
 fn write_single_file_plugin(template: &[u8], native_dll: &Path, output: &Path) -> Result<()> {
